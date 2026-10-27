@@ -4,6 +4,7 @@ import anyio
 import httpx
 from mcp import Client
 
+from anki_connect_mcp import arguments
 from anki_connect_mcp.client import AnkiConnectClient
 from anki_connect_mcp.server import build_server
 from anki_connect_mcp.spec import filter_methods, load_methods
@@ -136,3 +137,25 @@ def test_filters():
 def test_schemas_have_no_unresolved_refs():
     for spec in load_methods():
         assert "$ref" not in json.dumps(spec.input_schema()), spec.method
+
+
+def test_every_argument_is_described():
+    for spec in load_methods():
+        for name, prop in spec.input_schema()["properties"].items():
+            assert prop.get("description"), f"{spec.method}.{name}"
+        assert "Docs:" not in spec.description(), spec.method
+
+
+def test_argument_descriptions_match_schema():
+    methods = {spec.method: spec for spec in load_methods()}
+    for method, args in arguments.BY_METHOD.items():
+        assert method in methods, method
+        assert set(args) <= set(methods[method].params_schema["properties"]), method
+
+
+def test_session_is_optional_and_points_to_collection_get():
+    for spec in load_methods():
+        schema = spec.input_schema()
+        if "session" in schema["properties"]:
+            assert "session" not in schema.get("required", [])
+            assert "collection_get" in schema["properties"]["session"]["description"]

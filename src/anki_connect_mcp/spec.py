@@ -14,8 +14,9 @@ from dataclasses import dataclass
 from importlib import resources
 from typing import Any
 
+from . import arguments
+
 SCHEMA_FILE = "api-v1.schema.json"
-DOCS_URL = "https://git.sr.ht/~foosoft/anki-connect/tree/master/API_V1.md"
 
 # Extra MCP-only arguments for methods whose completion is "operation".
 # They are stripped before the request is sent to Anki-Connect.
@@ -58,6 +59,11 @@ class MethodSpec:
 
     def input_schema(self) -> dict[str, Any]:
         schema = copy.deepcopy(self.params_schema)
+        for name, prop in schema.get("properties", {}).items():
+            text = arguments.describe(self.method, name)
+            if text:
+                # Replaces generic type notes inherited from $defs (e.g. EntityId).
+                prop["description"] = text
         if self.is_operation:
             props = schema.setdefault("properties", {})
             props[WAIT_ARG] = {
@@ -94,7 +100,6 @@ class MethodSpec:
             )
         if self.errors:
             parts.append("Possible errors: " + ", ".join(self.errors) + ".")
-        parts.append(f"Docs: {DOCS_URL}#{self.method.replace('.', '').lower()}")
         return "\n\n".join(parts)
 
 
