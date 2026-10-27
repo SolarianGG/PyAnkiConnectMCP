@@ -1,0 +1,55 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python }} / ${{ matrix.resolution }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11", "3.12", "3.13", "3.14"]
+        # highest: latest releases allowed by pyproject.toml;
+        # lowest-direct: the minimum versions pyproject.toml claims to support.
+        resolution: [highest, lowest-direct]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+          activate-environment: true
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      # Install the built wheel, not the source tree, so a missing package file
+      # (e.g. api-v1.schema.json) fails here just as it would for users.
+      - name: Install wheel
+        run: |
+          uv pip compile pyproject.toml --extra test --resolution ${{ matrix.resolution }} -o requirements-ci.txt
+          uv pip install -r requirements-ci.txt
+          uv pip install --no-deps dist/*.whl
+          uv pip list
+
+      - name: Run tests
+        run: python -m pytest -v
+
+      - name: Smoke test console script
+        run: python scripts/smoke_test.py anki-connect-mcp
+
+      - name: Smoke test python -m
+        run: python scripts/smoke_test.py python -m anki_connect_mcp
